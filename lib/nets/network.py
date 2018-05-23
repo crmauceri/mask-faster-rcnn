@@ -530,27 +530,30 @@ class Network(nn.Module):
     self._image_gt_summaries['image'] = image
     self._image_gt_summaries['gt_boxes'] = gt_boxes
     self._image_gt_summaries['im_info'] = im_info
-
-    self._image = Variable(torch.from_numpy(image.transpose([0,3,1,2])).cuda(), volatile=mode == 'TEST')
+	
+    self._image = Variable(torch.from_numpy(image.transpose([0,3,1,2])).cuda())
     self._im_info = im_info # No need to change; actually it can be an list
     self._gt_boxes = Variable(torch.from_numpy(gt_boxes).cuda()) if gt_boxes is not None else None
     self._gt_masks = gt_masks # ndarray uint8 (num_boxes, im_height, im_width), range {0,1}
 
     self._mode = mode
 
-    net_conv, rois, cls_prob, bbox_pred, mask_prob = self._predict()
+    if mode == 'TEST':
+        with torch.no_grad():
+            net_conv, rois, cls_prob, bbox_pred, mask_prob = self._predict()
 
-    self._predictions['net_conv'] = net_conv
+            self._predictions['net_conv'] = net_conv
 
-    if mode == 'TEST':   
-      if cfg.TRAIN.BBOX_NORMALIZE_TARGETS_PRECOMPUTED:
-        stds = bbox_pred.data.new(cfg.TRAIN.BBOX_NORMALIZE_STDS).repeat(self._num_classes).unsqueeze(0).expand_as(bbox_pred)
-        means = bbox_pred.data.new(cfg.TRAIN.BBOX_NORMALIZE_MEANS).repeat(self._num_classes).unsqueeze(0).expand_as(bbox_pred)
-        self._predictions["bbox_pred"] = bbox_pred.mul(Variable(stds)).add(Variable(means))
-      else:
-        self._predictions["bbox_pred"] = bbox_pred
+        if cfg.TRAIN.BBOX_NORMALIZE_TARGETS_PRECOMPUTED:
+            stds = bbox_pred.data.new(cfg.TRAIN.BBOX_NORMALIZE_STDS).repeat(self._num_classes).unsqueeze(0).expand_as(bbox_pred)
+            means = bbox_pred.data.new(cfg.TRAIN.BBOX_NORMALIZE_MEANS).repeat(self._num_classes).unsqueeze(0).expand_as(bbox_pred)
+            self._predictions["bbox_pred"] = bbox_pred.mul(Variable(stds)).add(Variable(means))
+        else:
+            self._predictions["bbox_pred"] = bbox_pred
     else:
-      self._add_losses() # compute losses
+        net_conv, rois, cls_prob, bbox_pred, mask_prob = self._predict()
+        self._predictions['net_conv'] = net_conv
+        self._add_losses() # compute losses
 
   # Extract the head feature maps, for example for vgg16 it is conv5_3
   # only useful during testing mode
